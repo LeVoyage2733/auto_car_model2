@@ -1,0 +1,2 @@
+geometry_msgs/Point pickup_location
+geometry_msgs/Point dropoff_location
