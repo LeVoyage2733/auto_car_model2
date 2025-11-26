@@ -44,9 +44,9 @@ class GymBridge(Node):
         self.declare_parameter('map_img_ext', '.png')
         self.declare_parameter('num_agent', 1)
         
-        self.declare_parameter('sx', 3.32)
-        self.declare_parameter('sy', 10.3)
-        self.declare_parameter('stheta', 0.0)
+        self.declare_parameter('sx', 5.12)
+        self.declare_parameter('sy', 16.0)
+        self.declare_parameter('stheta', -68.0)
         
         self.declare_parameter('sx1', 2.0)
         self.declare_parameter('sy1', 2.0)

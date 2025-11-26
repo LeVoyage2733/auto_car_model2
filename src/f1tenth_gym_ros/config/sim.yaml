@@ -49,9 +49,9 @@ bridge:
     num_agent: 1
 
     # ego starting pose on map
-    sx: 3.32
-    sy: 10.3
-    stheta: 0.0
+    sx: 5.12
+    sy: 16.0
+    stheta: -68.0
 
     # opp starting pose on map
     sx1: 2.0

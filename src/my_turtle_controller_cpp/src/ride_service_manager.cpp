@@ -3,111 +3,78 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
-#include <fstream>
-#include <sstream>
-#include <string>
 #include <clocale>
 
 #include "ride_service_interfaces/msg/ride_request.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
-#include "sensor_msgs/msg/laser_scan.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "nav_msgs/msg/path.hpp" 
 #include "visualization_msgs/msg/marker.hpp"
 
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
-const std::string CSV_PATH = "/home/misys/ros2_ws/src/my_turtle_controller_cpp/waypoints.csv";
-
 struct Waypoint { double x; double y; };
-enum class State { IDLE, GOING_TO_PICKUP, AT_PICKUP, GOING_TO_DROPOFF, MISSION_COMPLETE };
+enum class State { IDLE, WAITING_FOR_PATH, FOLLOWING_PATH, AT_PICKUP, MISSION_COMPLETE };
 
 class RideServiceManager : public rclcpp::Node {
 public:
     RideServiceManager() : Node("ride_service_manager") {
-        RCLCPP_INFO(this->get_logger(), ">>> 스마트 Pure Pursuit 자율주행 시작! <<<");
-        load_waypoints();
-        
-        request_sub_ = this->create_subscription<ride_service_interfaces::msg::RideRequest>("/ride_request", 10, std::bind(&RideServiceManager::request_callback, this, _1));
-        odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("/ego_racecar/odom", 10, std::bind(&RideServiceManager::odom_callback, this, _1));
-        scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>("/scan", rclcpp::SensorDataQoS(), std::bind(&RideServiceManager::scan_callback, this, _1));
-        
+        RCLCPP_INFO(this->get_logger(), ">>> AI Taxi (A* Path Follower) Ready! <<<");
+
+        // 1. 통신 설정
+        request_sub_ = this->create_subscription<ride_service_interfaces::msg::RideRequest>(
+            "/ride_request", 10, std::bind(&RideServiceManager::request_callback, this, _1));
+
+        // [핵심] 파이썬 플래너가 계산한 경로를 받습니다.
+        path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+            "/planned_path", 10, std::bind(&RideServiceManager::path_callback, this, _1));
+
+        odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+            "/ego_racecar/odom", 10, std::bind(&RideServiceManager::odom_callback, this, _1));
+
         drive_pub_ = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>("/drive", 10);
-        
-        marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/path_marker", 10);
         target_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/target_marker", 10);
 
+        // 2. 좌표 설정 (앱과 동일해야 함)
         geometry_msgs::msg::Point p;
-        p.x = 3.32; p.y = 10.3; stations_.push_back(p);  
-        p.x = 22.8; p.y = 16.5; stations_.push_back(p);  
-        p.x = 49.1; p.y = 9.11; stations_.push_back(p);  
-        p.x = 37.4; p.y = 38.6; stations_.push_back(p); 
-        p.x = 3.44; p.y = 33.7; stations_.push_back(p); 
-        target_loc_ = stations_[0];
-
-        timer_ = this->create_wall_timer(50ms, std::bind(&RideServiceManager::control_loop, this));
+        // (좌표는 앱에서 오는 요청을 믿으므로 여기서는 초기화만 함)
         
-        publish_path_marker();
+        timer_ = this->create_wall_timer(50ms, std::bind(&RideServiceManager::control_loop, this));
     }
 
 private:
-    std::vector<Waypoint> global_path_;
-    std::vector<geometry_msgs::msg::Point> stations_; // 여기에 딱 한 번만 선언됨!
-    
-    void load_waypoints() {
-        std::ifstream file(CSV_PATH);
-        if (!file.is_open()) {
-            RCLCPP_ERROR(this->get_logger(), "❌ CSV 파일 열기 실패: %s", CSV_PATH.c_str());
-            return;
-        }
-        std::string line;
-        std::getline(file, line); 
-        while (std::getline(file, line)) {
-            std::stringstream ss(line);
-            std::string cell;
+    std::vector<Waypoint> dynamic_path_; // A*가 준 경로 저장소
+    int current_path_idx_ = 0;
+
+    // 경로 수신 콜백 (파이썬 -> C++)
+    void path_callback(const nav_msgs::msg::Path::SharedPtr msg) {
+        dynamic_path_.clear();
+        for (const auto& pose : msg->poses) {
             Waypoint wp;
-            if (std::getline(ss, cell, ',')) wp.x = std::stod(cell);
-            if (std::getline(ss, cell, ',')) wp.y = std::stod(cell);
-            global_path_.push_back(wp);
+            wp.x = pose.pose.position.x;
+            wp.y = pose.pose.position.y;
+            dynamic_path_.push_back(wp);
         }
-        RCLCPP_INFO(this->get_logger(), "✅ 웨이포인트 %lu개 로드 완료!", global_path_.size());
+        current_path_idx_ = 0;
+        state_ = State::FOLLOWING_PATH;
+        RCLCPP_INFO(this->get_logger(), "📥 경로 수신! 주행 시작 (총 %lu 개 지점)", dynamic_path_.size());
     }
 
-    void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg) { (void)msg; }
-
-    Waypoint get_lookahead_point(double lookahead_dist) {
-        double min_dist = 10000.0;
-        int closest_idx = -1;
-
-        for (size_t i = 0; i < global_path_.size(); i++) {
-            double dx = global_path_[i].x - current_x_;
-            double dy = global_path_[i].y - current_y_;
-            double dist = std::sqrt(dx*dx + dy*dy);
-            if (dist < min_dist) {
-                min_dist = dist;
-                closest_idx = i;
-            }
+    void request_callback(const ride_service_interfaces::msg::RideRequest::SharedPtr msg) {
+        if (state_ == State::IDLE || state_ == State::MISSION_COMPLETE) {
+            RCLCPP_INFO(this->get_logger(), "🔔 호출 수신! 경로 계산 대기 중...");
+            dropoff_loc_ = msg->dropoff_location; // 목적지 저장
+            state_ = State::WAITING_FOR_PATH;
+            // (참고: 실제 경로 계산 요청은 ride_dispatcher나 global_planner가 토픽을 보고 알아서 수행함)
         }
-        
-        int target_idx = closest_idx;
-        for (size_t i = 0; i < global_path_.size(); i++) {
-            int curr_idx = (closest_idx + i) % global_path_.size();
-            double dx = global_path_[curr_idx].x - current_x_;
-            double dy = global_path_[curr_idx].y - current_y_;
-            double dist = std::sqrt(dx*dx + dy*dy);
-
-            if (dist > lookahead_dist) {
-                target_idx = curr_idx;
-                break;
-            }
-        }
-        return global_path_[target_idx];
     }
 
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
         current_x_ = msg->pose.pose.position.x;
         current_y_ = msg->pose.pose.position.y;
+        
         double qx = msg->pose.pose.orientation.x;
         double qy = msg->pose.pose.orientation.y;
         double qz = msg->pose.pose.orientation.z;
@@ -117,84 +84,75 @@ private:
         current_yaw_ = std::atan2(siny_cosp, cosy_cosp);
     }
 
-    void request_callback(const ride_service_interfaces::msg::RideRequest::SharedPtr msg) {
-        if (state_ == State::IDLE || state_ == State::MISSION_COMPLETE) {
-            RCLCPP_INFO(this->get_logger(), "🔔 호출 수신! 이동 시작.");
-            pickup_loc_ = msg->pickup_location;
-            dropoff_loc_ = msg->dropoff_location;
-            state_ = State::GOING_TO_PICKUP;
-        }
-    }
-
-    double get_distance_to(geometry_msgs::msg::Point target) {
-        return std::sqrt(std::pow(current_x_ - target.x, 2) + std::pow(current_y_ - target.y, 2));
+    double get_dist(double x1, double y1, double x2, double y2) {
+        return std::sqrt(std::pow(x1 - x2, 2) + std::pow(y1 - y2, 2));
     }
 
     void control_loop() {
         ackermann_msgs::msg::AckermannDriveStamped drive_msg;
         drive_msg.header.stamp = this->get_clock()->now();
         drive_msg.header.frame_id = "base_link";
+        
         double steering_angle = 0.0;
         double speed = 0.0;
 
-        if (!global_path_.empty() && state_ != State::IDLE && state_ != State::AT_PICKUP && state_ != State::MISSION_COMPLETE) {
-            double lookahead_dist = 0.6; 
-            Waypoint target = get_lookahead_point(lookahead_dist);
+        if (state_ == State::FOLLOWING_PATH && !dynamic_path_.empty()) {
+            // [튜닝] 전방 주시 거리 (벽 뚫기 방지: 짧게 설정)
+            double lookahead_dist = 0.8; 
             
-            // [시각화] 빨간 점 발행
+            // 현재 위치에서 L 거리만큼 떨어진 점 찾기 (순차 탐색)
+            bool found_target = false;
+            for (size_t i = current_path_idx_; i < dynamic_path_.size(); i++) {
+                double d = get_dist(current_x_, current_y_, dynamic_path_[i].x, dynamic_path_[i].y);
+                if (d > lookahead_dist) {
+                    current_path_idx_ = i; // 다음엔 여기서부터 찾음 (효율성)
+                    found_target = true;
+                    break;
+                }
+            }
+            
+            // 경로 끝에 도달했을 때
+            if (!found_target) {
+                current_path_idx_ = dynamic_path_.size() - 1;
+            }
+
+            Waypoint target = dynamic_path_[current_path_idx_];
             publish_target_marker(target);
 
+            // Pure Pursuit 조향 계산
             double dx = target.x - current_x_;
             double dy = target.y - current_y_;
-            
             double local_y = std::sin(-current_yaw_) * dx + std::cos(-current_yaw_) * dy;
             double curvature = 2.0 * local_y / (lookahead_dist * lookahead_dist);
+            
             steering_angle = curvature;
-            speed = 1.0;
+            
+            // [튜닝] 속도 설정 (벽 뚫기 방지: 속도 줄임)
+            // 코너(조향각이 클 때)에서는 더 천천히
+            if (std::abs(steering_angle) > 0.2) {
+                speed = 1.0; // 코너링 속도
+            } else {
+                speed = 2.0; // 직선 속도
+            }
+
+            // [정차 로직] 경로의 마지막 점과 가까워지면 정지
+            Waypoint final_wp = dynamic_path_.back();
+            double dist_to_goal = get_dist(current_x_, current_y_, final_wp.x, final_wp.y);
+            
+            if (dist_to_goal < 1.0) { // 1m 이내 도착 시
+                speed = 0.0;
+                RCLCPP_INFO(this->get_logger(), "🏁 목적지 도착! (미션 완료)");
+                state_ = State::IDLE;
+                dynamic_path_.clear(); // 경로 삭제 (재출발 방지)
+            }
         }
 
-        switch (state_) {
-            case State::IDLE: speed = 0.0; break;
-            case State::GOING_TO_PICKUP:
-                if (get_distance_to(pickup_loc_) < 2.5) {
-                    state_ = State::AT_PICKUP;
-                    one_shot_timer_ = this->create_wall_timer(3s, [this]() { state_ = State::GOING_TO_DROPOFF; one_shot_timer_->cancel(); });
-                }
-                break;
-            case State::AT_PICKUP: speed = 0.0; break;
-            case State::GOING_TO_DROPOFF:
-                if (get_distance_to(dropoff_loc_) < 1.5) {
-                    state_ = State::MISSION_COMPLETE;
-                    one_shot_timer_ = this->create_wall_timer(2s, [this]() { state_ = State::IDLE; one_shot_timer_->cancel(); });
-                }
-                break;
-            case State::MISSION_COMPLETE: speed = 0.0; break;
-        }
+        // 조향각 제한 (-0.4 ~ 0.4 rad)
         drive_msg.drive.steering_angle = std::max(-0.4, std::min(0.4, steering_angle));
         drive_msg.drive.speed = speed;
         drive_pub_->publish(drive_msg);
-        
-        publish_path_marker();
     }
 
-    void publish_path_marker() {
-        visualization_msgs::msg::Marker points;
-        points.header.frame_id = "map";
-        points.header.stamp = this->get_clock()->now();
-        points.ns = "waypoints";
-        points.action = visualization_msgs::msg::Marker::ADD;
-        points.pose.orientation.w = 1.0;
-        points.id = 0;
-        points.type = visualization_msgs::msg::Marker::POINTS;
-        points.scale.x = 0.1; points.scale.y = 0.1;
-        points.color.g = 1.0f; points.color.a = 1.0;
-        for (const auto& wp : global_path_) {
-            geometry_msgs::msg::Point p; p.x = wp.x; p.y = wp.y;
-            points.points.push_back(p);
-        }
-        marker_pub_->publish(points);
-    }
-    
     void publish_target_marker(Waypoint target) {
         visualization_msgs::msg::Marker marker;
         marker.header.frame_id = "map";
@@ -205,26 +163,21 @@ private:
         marker.action = visualization_msgs::msg::Marker::ADD;
         marker.pose.position.x = target.x;
         marker.pose.position.y = target.y;
-        marker.pose.position.z = 0.5; 
-        marker.pose.orientation.w = 1.0;
+        marker.pose.position.z = 0.5;
         marker.scale.x = 0.5; marker.scale.y = 0.5; marker.scale.z = 0.5;
-        marker.color.r = 1.0f; marker.color.a = 1.0; // 빨간색
+        marker.color.r = 1.0f; marker.color.a = 1.0;
         target_pub_->publish(marker);
     }
 
     rclcpp::Subscription<ride_service_interfaces::msg::RideRequest>::SharedPtr request_sub_;
-    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr drive_pub_;
-    
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr target_pub_; 
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr target_pub_;
 
     rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::TimerBase::SharedPtr one_shot_timer_;
     State state_ = State::IDLE;
-    geometry_msgs::msg::Point target_loc_, pickup_loc_, dropoff_loc_;
-    // 중복 선언 제거됨 (이 자리에 변수 없음)
+    geometry_msgs::msg::Point dropoff_loc_;
     double current_x_ = 0.0, current_y_ = 0.0, current_yaw_ = 0.0;
 };
 
