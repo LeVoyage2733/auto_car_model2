@@ -24,3 +24,13 @@ else
 fi
 
 echo "🎉 [설정 완료] 이제 ros2 launch 명령어로 실행하세요!"
+# 맨 마지막에 추가
+echo ""
+echo "============================================"
+echo "✅ 모든 설정이 끝났습니다!"
+echo "이제 아래 순서대로 실행하세요:"
+echo "1. ros2 launch f1tenth_gym_ros gym_bridge_launch.py"
+echo "2. (새 터미널) ros2 run my_turtle_controller_cpp ride_service_manager"
+echo "3. (새 터미널) python3 src/my_turtle_controller_cpp/src/global_planner.py"
+echo "4. (새 터미널) cd callbus && uvicorn main:app --host 0.0.0.0 --port 8000"
+echo "============================================"
