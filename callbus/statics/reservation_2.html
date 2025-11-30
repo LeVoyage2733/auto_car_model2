@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>호출 예약_page2</title>
+  <style>
+    body { font-family: 'Noto Sans KR', sans-serif; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    .container { width: 100%; max-width: 540px; }
+    h1 { text-align: center; margin-bottom: 40px; }
+    .map-box { background-color: #f0f0f0; border: 2px solid #ffc107; border-radius: 15px; padding: 20px; margin-bottom: 30px; }
+    .map-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; }
+    .map-columns { display: flex; gap: 10px; }
+    .map-column { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+    .map-column button { padding: 14px; border-radius: 12px; border: none; background-color: #e9ecef; font-weight: bold; cursor: pointer; }
+    .map-column button.selected { background-color: #e0a800; color: #fff; }
+    .input-group { margin-bottom: 30px; }
+    label { font-size: 1.5rem; font-weight: bold; display: block; margin-bottom: 8px; }
+    input { width: 100%; padding: 12px; font-size: 1.1rem; margin-bottom: 20px; }
+    .time-select-group { display: flex; gap: 10px; flex-wrap: wrap; }
+    .time-select-group button { flex: 1; padding: 15px; border: none; background: #e9ecef; border-radius: 8px; cursor: pointer; }
+    .time-select-group button.active { background: #e0a800; color: white; }
+    .btn-next { width: 100%; background: #ffc107; font-size: 1.5rem; padding: 15px; border: none; border-radius: 12px; cursor: pointer; margin-top: 20px; }
+    #timeSection { display: none; }
+  </style>
+</head>
+<body>
+  <form id="timeForm" method="post" action="/호출위치선택">
+    <div class="container">                  
+      <h1>위치 및 시간 설정</h1>
+
+      <div class="map-box">
+        <div class="map-header">
+          <span>출발지</span>
+          <span>도착지</span>
+        </div>
+        <div class="map-columns">
+          <div class="map-column">
+            <button type="button" class="start-btn" data-value="1">정류장 1</button>
+            <button type="button" class="start-btn" data-value="2">정류장 2</button>
+            <button type="button" class="start-btn" data-value="3">정류장 3</button>
+            <button type="button" class="start-btn" data-value="4">정류장 4</button>
+            <button type="button" class="start-btn" data-value="5">정류장 5 (갈림길)</button>
+            <button type="button" class="start-btn" data-value="6">정류장 6</button>
+          </div>
+          
+          <div class="map-column">
+            <button type="button" class="end-btn" data-value="1">정류장 1</button>
+            <button type="button" class="end-btn" data-value="2">정류장 2</button>
+            <button type="button" class="end-btn" data-value="3">정류장 3</button>
+            <button type="button" class="end-btn" data-value="4">정류장 4</button>
+            <button type="button" class="end-btn" data-value="5">정류장 5 (갈림길)</button>
+            <button type="button" class="end-btn" data-value="6">정류장 6</button>
+          </div>
+        </div>
+      </div>
+      
+      <input type="hidden" name="start_node" id="start_node" required>
+      <input type="hidden" name="end_node" id="end_node" required>
+      <input type="hidden" name="user_id" id="user_id">
+      
+      <div class="input-group">
+        <label>날짜 선택</label>
+        <input type="date" name="date" id="date" required>
+      </div>
+
+      <div id="timeSection" class="input-group">
+        <label>도착 시간 선택</label>
+        <div id="buttonGroup" class="time-select-group">
+          <button type="button" data-time="5">5분 뒤</button>
+          <button type="button" data-time="10">10분 뒤</button>
+          <button type="button" data-time="30">30분 뒤</button>
+        </div>
+        <input type="time" id="timePicker" style="display:none;">
+        <input type="hidden" name="arrival_time" id="arrival_time">
+      </div>
+
+      <button type="submit" class="btn-next" onclick="return validateForm()">예약 완료 (호출)</button>
+    </div>
+  </form>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    document.getElementById("user_id").value = params.get("user_id") || "guest";
+
+    const startBtns = document.querySelectorAll('.start-btn');
+    const endBtns = document.querySelectorAll('.end-btn');
+    
+    startBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        startBtns.forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        document.getElementById('start_node').value = btn.dataset.value; 
+      });
+    });
+
+    endBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        endBtns.forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        document.getElementById('end_node').value = btn.dataset.value; 
+      });
+    });
+
+    const dateInput = document.getElementById("date");
+    const timeSection = document.getElementById("timeSection");
+    const timePicker = document.getElementById("timePicker");
+    const btnGroup = document.getElementById("buttonGroup");
+    let selectedMinutes = 0;
+
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.min = today;
+
+    dateInput.addEventListener('change', () => {
+        timeSection.style.display = 'block';
+        if(dateInput.value === today) {
+            btnGroup.style.display = 'flex';
+            timePicker.style.display = 'none';
+        } else {
+            btnGroup.style.display = 'none';
+            timePicker.style.display = 'block';
+        }
+    });
+
+    document.querySelectorAll('.time-select-group button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.time-select-group button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedMinutes = parseInt(btn.dataset.time);
+        });
+    });
+
+    function validateForm() {
+        const start = document.getElementById('start_node').value;
+        const end = document.getElementById('end_node').value;
+        const date = dateInput.value;
+        
+        if(!start || !end) { alert("출발지와 도착지를 모두 선택해주세요!"); return false; }
+        if(start === end) { alert("출발지와 도착지가 같습니다!"); return false; }
+        if(!date) { alert("날짜를 선택해주세요."); return false; }
+        
+        const timeInput = document.getElementById('arrival_time');
+        if(btnGroup.style.display !== 'none') {
+            if(selectedMinutes === 0) { alert("시간을 선택해주세요."); return false; }
+            const now = new Date();
+            now.setMinutes(now.getMinutes() + selectedMinutes);
+            timeInput.value = now.toTimeString().slice(0,5);
+        } else {
+            if(!timePicker.value) { alert("시간을 입력해주세요."); return false; }
+            timeInput.value = timePicker.value;
+        }
+        return true; 
+    }
+  </script>
+</body>
+</html>

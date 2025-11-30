@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>예약 확인 - 상세정보</title>
+
+  <!-- CSS: 고령자 친화적 인터페이스 구현 -->
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: #fff;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 540px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 3rem;
+      margin-bottom: 30px;
+      color: #000;
+    }
+
+    .info-box {
+      background-color: #f8f9fa;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+
+    .info-item {
+      font-size: 1.5rem;
+      margin-bottom: 15px;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    .map-box {
+      width: 100%;
+      height: 220px;
+      background-color: #f0f0f0;
+      border: 2px solid #2196F3;
+      border-radius: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #555;
+      font-size: 1.3rem;
+      font-weight: bold;
+      text-align: center;
+      line-height: 1.6;
+      margin: 20px 0;
+    }
+
+    .btn-group {
+      display: flex;
+      justify-content: space-between;
+      gap: 15px;
+    }
+
+    button {
+      flex: 1;
+      font-size: 1.8rem;
+      font-weight: bold;
+      padding: 15px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-cancel {
+      background-color: #d9534f;
+      color: #fff;
+    }
+
+    .btn-cancel:hover {
+      background-color: #c9302c;
+    }
+
+    .btn-confirm {
+      background-color: #2196F3;
+      color: #fff;
+    }
+
+    .btn-confirm:hover {
+      background-color: #0079dc;
+    }
+
+    .assist-check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.5rem;
+    }
+
+    input[type="checkbox"] {
+      transform: scale(1.6);
+      pointer-events: none; /* 예약 화면 페이지에서 체크 박스 수정 불가능도록 설정 */
+      accent-color: #2196F3;
+    }
+
+    .route-display {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #333;
+      text-align: center;
+      background-color: #fff;
+      border: 2px dashed #2196F3;
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 20px;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>📋 예약 내역 확인</h1>
+
+    <div class="info-box" id="reservationInfo"></div>
+
+    <div class="btn-group">
+      <button class="btn-cancel" onclick="cancelReservation()">예약 취소</button>
+      <button class="btn-confirm" onclick="confirmReservation()">확인</button>
+    </div>
+  </div>
+
+  <script>                                    
+    // URL에서 식별번호 파라미터 추출
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+
+    if (!code) {
+        alert("식별번호 정보가 없습니다. 다시 입력해 주세요.");
+        window.location.href = "/예약확인";
+    }
+
+    const infoBox = document.getElementById("reservationInfo");
+
+    // 실제 서버 연동 전까지 임시 데이터 표x시
+    // const reservationData = {
+    //   name: "홍길동",
+    //   phone: "010-1234-5678",
+    //   emergency: "010-9999-8888",
+    //   passengers: 2,
+    //   assist: true, // true면 체크됨
+    //   start: "OO마을회관",
+    //   end: "읍내 보건소",
+    //   duration: "nn"
+    // };
+
+    // 서버에서 실제 예약 정보 불러오기
+    fetch(`/api/reservation?code=${encodeURIComponent(code)}`)
+        .then(res => {
+            if (!res.ok){
+                throw new Error("예약 정보를 찾을 수 없습니다.");
+            }
+            return res.json();
+        })
+        .then(reservationData => {
+            // 데이터 표시 (수정 불가능하도록 설정)
+            infoBox.innerHTML = `
+            <div class="info-item"><strong>예약자 성함:</strong> ${reservationData.name}</div>
+            <div class="info-item"><strong>전화번호:</strong> ${reservationData.phone}</div>
+            ${reservationData.emergency ? `<div class="info-item"><strong>비상 연락망:</strong> ${reservationData.emergency}</div>` : ""}
+            <div class="info-item"><strong>탑승 인원:</strong> ${reservationData.passengers}명</div>
+
+            // <div class="assist-check">
+            //     <input type="checkbox" ${reservationData.assist ? "checked" : ""}>
+            //     <label>탑승 지원 필요</label>
+            // </div>
+
+            // <div class="map-box">(Map 표시 예정)</div>
+
+            // <div class="route-display">
+            //     ${reservationData.start} → ${reservationData.end}<br>
+            //     <span style="font-size:1.4rem; color:#555;">예상 소요시간: 약 ${reservationData.duration}분</span>
+            // </div>
+            `;
+        })
+        .catch(arr => {
+            alert(er.message);
+            window.location.href = '/예약확인'
+        })
+
+
+    // 예약 취소
+    function cancelReservation() {
+      const confirmCancel = confirm("정말 예약을 취소하시겠습니까?");
+      if (confirmCancel) {
+        alert("예약이 취소되었습니다."); // 서버 연동 후 예약 취소 처리 필요
+        window.location.href = "/";
+      }
+    }
+
+    // 확인 버튼
+    function confirmReservation() {
+      window.location.href = "/"; // 메인 화면으로 이동
+    }
+  </script>
+</body>
+</html>
