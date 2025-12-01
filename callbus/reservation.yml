@@ -1,0 +1,11 @@
+sample:
+  name: empty
+  phone: empty
+  emergency: empty
+  passengers: empty
+  assist: 0
+N-30:
+  start: a
+  end: b
+  date: '2025-11-29'
+  time: '19:19'

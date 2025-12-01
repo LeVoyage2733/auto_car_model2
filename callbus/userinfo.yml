@@ -1,0 +1,42 @@
+sample:
+  name: empty
+  phone: empty
+  emergency: empty
+  passengers: empty
+  assist: 0
+N-30:
+  name: 이서준
+  phone: 1234
+  emergency: 1234
+  passengers: 1
+  assist: true
+N-44:
+  name: 정혜원
+  phone: 1234
+  emergency: 1234
+  passengers: 3
+  assist: false
+N-40:
+  name: empty
+  phone: empty
+  emergency: empty
+  passengers: empty
+  assist: 0
+N-37-8:
+  name: empty
+  phone: empty
+  emergency: empty
+  passengers: empty
+  assist: 0
+N-35-3:
+  name: empty
+  phone: empty
+  emergency: empty
+  passengers: empty
+  assist: 0
+N-39-2:
+  name: empty
+  phone: empty
+  emergency: empty
+  passengers: empty
+  assist: 0

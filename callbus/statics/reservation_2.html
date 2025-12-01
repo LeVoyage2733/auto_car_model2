@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>호출 예약_page2</title>
+
+  <!-- CSS: 고령자 친화적 인터페이스 구현 -->
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: #fff;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 540px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 3rem;
+      margin-bottom: 40px;
+      color: #333;
+    }
+
+    .map-box {
+      width: 100%;
+      background-color: #f0f0f0;
+      border: 2px solid #ffc107;
+      border-radius: 15px;
+      box-sizing: border-box;
+      padding: 20px;
+      margin-bottom: 30px;
+    
+    }
+
+    .map-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: #333;
+    }
+    
+    .map-header span {
+      flex: 1;
+      text-align: center;
+    }
+    
+    .map-columns {
+      width: 100%;
+      display: flex;
+      gap: 12px;
+    }
+    
+    .map-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .map-column button {
+      padding: 14px 0;
+      font-size: 1.2rem;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      background-color: #e9ecef;
+      color: #333;
+      font-weight: bold;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    
+    .map-column button.selected {
+      background-color: #e0a800;
+      color: #fff;
+      transform: scale(1.02);
+    }
+
+    .map-button-group {
+      display: flex;
+      width: 100%;
+      gap: 12px;
+    }
+
+    .map-button-group button {
+      flex: 1;
+      padding: 16px 0;
+      font-size: 1.3rem;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      background-color: #e9ecef;
+      color: #333;
+      font-weight: bold;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+
+    .map-button-group button.active {
+      background-color: #e0a800;
+      color: #fff;
+      transform: scale(1.02);
+    }
+
+    .info-section {
+      margin-bottom: 30px;
+    }
+
+    .info-title {
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .info-box {
+      width: 100%;
+      background-color: #e9ecef;
+      border-radius: 10px;
+      padding: 18px;
+      text-align: center;
+      font-size: 1.3rem;
+      color: #555;
+      box-sizing: border-box;
+    }
+
+    .input-group {
+      margin-bottom: 30px;
+    }
+
+    label {
+      font-size: 2rem;
+      font-weight: bold;
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    input[type="date"], input[type="time"] {
+      width: 100%;
+      padding: 12px;
+      font-weight: bold;
+      font-size: 1.1rem;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      box-sizing: border-box;
+      margin-bottom: 20px;
+    }
+
+    .time-select-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .time-select-group button {
+      flex: 1 1 calc(50% - 10px);
+      padding: 20px;
+      font-size: 1.3rem;
+      background-color: #e9ecef;
+      border: none;
+      border-radius: 8px;
+      color: #333;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .time-select-group button.active {
+      background-color: #e0a800;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .btn-next {
+      width: 100%;
+      background-color: #ffc107;
+      color: #000;
+      font-weight: bold;
+      font-size: 2rem;
+      border: none;
+      border-radius: 12px;
+      padding: 15px;
+      margin-top: 25px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-next:hover {
+      background-color: #e0a800;
+    }
+
+    /* 처음에는 숨김처리 */
+    #timeSection {
+      display: none;
+      transition: all 0.3s ease;
+    }
+  </style>
+</head>
+
+<body>
+  <form   id="timeForm"
+          method='post' 
+          action='/호출위치선택'
+          enctype='application/x-www-form-urlencoded'>
+  <div class="container">                    
+    <h1>위치 및 시간 설정</h1>
+    <!-- 출발점과 도착점 지정
+    1번 정류장(두 집 영영) : (3.32, 10.3)
+    2번 정류장(시장) : (22.8, 16.5)
+    3번 정류장(삼거리맞은편) : (49.1, 9.11)
+    4번 정류장(가장멂 ㅡㅡ) : (37.4, 38.6)
+    삼거리 노드 : (28.2, 36.0)
+    5번 정류장(고ㅋ) : (3.44, 33.7) -->
+    
+    <!---->
+    <!-- html 추가한 부분 시작 -->
+    <div class="map-box">
+      <div class="map-header">
+        <span>출발지 선택 </span>
+        <span>도착지 선택</span>
+      </div>
+      
+      <div class="map-columns">
+        <!-- 출발지 리스트 -->
+         <div class="map-column">
+          <button type="button" class="start-btn" name="start1" id="start1" data-value="1">정류장1</button>
+          <button type="button" class="start-btn" name="start2" id="start2" data-value="2">정류장2</button>
+          <button type="button" class="start-btn" name="start3" id="start3" data-value="3">정류장3</button>
+          <button type="button" class="start-btn" name="start4" id="start4" data-value="4">정류장4</button>
+          <button type="button" class="start-btn" name="start5" id="start5" data-value="5">정류장5</button>
+        </div>
+        
+        <!-- 도착지 리스트 -->
+         <div class="map-column">
+          <button type="button" class="end-btn" name="arrival1" id="arrival1" data-value="1">정류장1</button>
+          <button type="button" class="end-btn" name="arrival2" id="arrival2" data-value="2">정류장2</button>
+          <button type="button" class="end-btn" name="arrival3" id="arrival3" data-value="3">정류장3</button>
+          <button type="button" class="end-btn" name="arrival4" id="arrival4" data-value="4">정류장4</button>
+          <button type="button" class="end-btn" name="arrival5" id="arrival5" data-value="5">정류장5</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 선택된 출발지/도착지 서버로 보내기 위한 hidden -->
+     <input type="hidden" name="start" id="start">
+     <input type="hidden" name="end" id="end">
+     <!-- html 추가한 부분 끝 -->
+
+    <!-- 가장 최근 이용 내역 표시란 -->
+    <div class="info-section">
+      <div class="info-title">가장 최근 이용 내역</div>
+      <div class="info-box" id="recentBox">가장 최근 이용 내역이 없습니다.</div> <!-- 아직 서버와 연결 전이라, 없다고 표시만 해놓은 상태 -->
+    </div>
+
+    <!-- 즐겨찾기한 이동 경로 표시란 -->
+    <div class="info-section">
+      <div class="info-title">즐겨찾기 이동 경로</div>
+      <div class="info-box" id="favoriteBox">즐겨찾기한 이동 경로가 없습니다.</div> <!-- 아직 서버와 연결 전이라, 없다고 표시만 해놓은 상태 -->
+    </div>
+
+    <!-- 날짜 선택 -->
+    <div class="input-group">
+      <label for="date">날짜 선택</label>
+      <input type="date" name="date" id="date">
+    </div>
+
+    <!-- 차량 호출 시간 (날짜 선택 후 나타남) -->
+    <div id="timeSection" class="input-group">
+      <label id="timeLabel" for="time-option">차량 도착 시간 선택</label>
+
+      <!-- 예약자가 선택한 날짜가 오늘 날짜일 경우 버튼 표시 -->
+      <div id="buttonGroup" class="time-select-group">
+        <button type="button" data-time="5">5분 뒤</button>
+        <button type="button" data-time="10">10분 뒤</button>
+        <button type="button" data-time="30">30분 뒤</button>
+        <button type="button" data-time="60">1시간 뒤</button>
+      </div>
+
+      <!-- 예약자가 선택한 날짜가 오늘 날짜가 아닐 경우 타임피커 표시 -->
+      <input type="time" id="timePicker" style="display:none;">
+      <input type="hidden" name="user_id" id="user_id">
+      <input type="hidden" id="selected_time_minutes" value="">
+      <!-- 서버로 보낼 최종 도착시간 -->
+      <input type="hidden" name="arrival_time" id="arrival_time">
+    </div>
+
+    <!-- 다음 버튼 -->
+    <button type="submit" class="btn-next" onclick="return goNext()">다음</button>
+  </div>
+
+  <!-- JS -->
+  <script>
+    // user_id
+    const params  = new URLSearchParams(window.location.search);
+    const userId  = params.get("user_id");
+
+    if (userId) {
+      document.getElementById("user_id").value = userId;
+    }
+
+
+    //
+    // JS 추가한 부분 시작
+    // 출발지 / 도착지 선택 버튼 처리
+    const startButtons = document.querySelectorAll(".start-btn");
+    const endButtons = document.querySelectorAll(".end-btn");
+    const startInput = document.getElementById("start");
+    const endInput = document.getElementById("end");
+
+    let selectedStart = null;
+    let selectedEnd = null;
+
+    startButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+
+        // 이미 선택된 출발지 재클릭 → 선택 해제
+        if (selectedStart === btn.dataset.value) {
+          btn.classList.remove("selected"); 
+          selectedStart = null;
+          startInput.value = "";
+          
+          endButton.forEach(e => {
+            e.disabled = flase;
+            e.classList.remove("disabled");
+          });
+          return;
+        }
+        
+        // 출발지 선택
+        selectedStart = btn.dataset.value;
+
+        startButtons.forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        startInput.value = btn.dataset.value; // 서버로 보낼 출발지 값
+        
+        // 도착지에서 동일한 정류장 선택 비활성화
+        endButtons.forEach(e => {
+          if (e.dataset.value === btn.dataset.value) {
+            e.disabled = true;
+            e.classList.add("disabled");
+          } else {
+            if (selectedEnd !== e.dataset.value) {
+              e.disabled = false;
+              e.classList.remove("disabled"); 
+            } 
+          }
+        });
+      });
+    });
+
+    endButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+
+        // 이미 선택된 도착지 재클릭 → 선택 해제
+        if (selectedEnd === btn.dataset.value) {
+          btn.classList.remove("selected");
+          selectedEnd = null;
+          endInput.value = "";
+          
+          startButtons.forEach(s => {
+            s.disabled = false;
+            s.classList.remove("disabled");
+          });
+          return;
+        }
+
+    // 도착지 선택
+    selectedEnd = btn.dataset.value;
+
+    endButtons.forEach(b => b.classList.remove("selected"));
+    btn.classList.add("selected");
+    endInput.value = btn.dataset.value; // 서버로 보낼 도착지 값
+        
+    // 출발지에서 동일한 정류장 선택 비활성화
+    startButtons.forEach(s => {
+      if (s.dataset.value === btn.dataset.value) {
+        s.disabled = true;
+        s.classList.add("disabled");
+      } else {
+        if (selectedStart !== s.dataset.value) {
+          s.disabled = false;
+          s.classList.remove("disabled");
+        }
+      }
+    });
+  });
+});
+// JS 추가한 부분 끝
+//
+
+
+    // 한국 시간 기준으로 날짜 보정
+    const today = new Date();
+    today.setHours(today.getHours() + 9); // UTC → KST 변환
+    const todayString = today.toISOString().split("T")[0];
+
+    const maxDate = new Date(today);
+    maxDate.setMonth(today.getMonth() + 1); // 예약 가능 날짜의 범위 설정 (1개월 이내)
+
+    const dateInput = document.getElementById("date");
+    dateInput.min = todayString;
+    dateInput.max = maxDate.toISOString().split("T")[0];
+
+    const timeSection = document.getElementById("timeSection");
+    const buttonGroup = document.getElementById("buttonGroup");
+    const timePicker = document.getElementById("timePicker");
+
+    const finalTimeInput = document.getElementById("finalTime");
+    
+    // 날짜 선택 시
+    dateInput.addEventListener("change", () => {
+      const selectedDate = new Date(dateInput.value);
+      const todayDate = new Date(todayString);
+
+      // 오늘 날짜와 같으면 버튼 표시, 다르면 타임피커 표시
+      if (selectedDate.getTime() === todayDate.getTime()) {
+        timeSection.style.display = "block";
+        buttonGroup.style.display = "flex";
+        timePicker.style.display = "none";
+      } else {
+        timeSection.style.display = "block";
+        buttonGroup.style.display = "none";
+        timePicker.style.display = "block";
+      }
+    });
+
+    // 버튼 클릭 시 스타일 변경
+    const timeButtons = document.querySelectorAll(".time-select-group button");
+    timeButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        timeButtons.forEach(b => b.classList.remove("active")); // 이전 선택 해제
+        btn.classList.add("active"); // 현재 선택 추가 및 강조
+        document.getElementById("selected_time_minutes").value = btn.dataset.time; // 선택된 시간 저장
+      });
+    });
+
+    function goNext() {
+      const date = document.getElementById("date").value;
+      const timeButtonsVisible = buttonGroup.style.display === "flex";
+      const selectedTime = document.getElementById("selected_time_minutes").value;
+      const dialTime = timePicker.value;
+
+      // 필수 입력 항목 확인 및 안내
+      if (!date) {
+        alert("날짜를 선택해주세요.");
+        return false;
+      }
+
+      if (timeButtonsVisible && !selectedTime) {
+        alert("차량 도착 시간을 선택해주세요.");
+        return false;
+      }
+
+      if (!timeButtonsVisible && !dialTime) {
+        alert("차량 도착 시간을 입력해주세요.");
+        return false;
+      }
+      
+      const arrivalHidden = document.getElementById("arrival_time");
+
+      if (timeButtonsVisible) {
+        // 오늘 날짜 + 버튼 선택: 현재 시각 기준 n분 뒤 계산
+        const minutes = parseInt(selectedTime, 10);
+
+        const now = new Date(); // 클라이언트 현재 시각
+        const arrival = new Date(now.getTime() + minutes * 60000);
+
+        const hh = String(arrival.getHours()).padStart(2, "0");
+        const mm = String(arrival.getMinutes()).padStart(2, "0");
+
+        arrivalHidden.value = `${hh}:${mm}`; // 예: "14:35"
+      } else {
+        // 오늘이 아닌 날짜: 타임피커에서 고른 시간 그대로
+        arrivalHidden.value = dialTime; // 예: "09:20"
+      }
+
+      // 여기까지 왔으면 검증 통과 + hidden 값 세팅 완료 → 폼 전송 허용
+      // (return true 하면 기본 submit 동작 실행됨)
+      return true;
+
+      // 호출 예약_page3로 이동
+      // window.location.href = "/경로및소요시간";
+    }
+  </script>
+  </form>
+</body>
+</html>

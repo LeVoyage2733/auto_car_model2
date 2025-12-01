@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>호출 예약_page3</title>
+
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: #fff;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 540px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 3rem;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .map-box {
+      width: 100%;
+      height: 240px;
+      background-color: #f0f0f0;
+      border: 2px solid #ffc107;
+      border-radius: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #555;
+      font-size: 1rem;
+      font-weight: bold;
+      margin-bottom: 35px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .time-info {
+      background-color: #fff9c4;
+      border-radius: 10px;
+      padding: 15px;
+      text-align: center;
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: #333;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+
+    .btn-complete {
+      width: 100%;
+      background-color: #ffc107;
+      color: #fff;
+      font-weight: bold;
+      font-size: 2rem;
+      border: none;
+      border-radius: 12px;
+      padding: 15px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-complete:hover {
+      background-color: #e0a800;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>경로 및 소요 시간 안내</h1>
+
+    <div class="map-box">
+      (최단 경로를 Map 내에 표시) </div>
+
+    <div class="time-info">
+      총 <span id="timeValue">nn</span>분 소요 예상 </div>
+
+    <button class="btn-complete" onclick="completeReservation()">완료</button>
+  </div>
+
+  <script>
+    // 1. URL에서 user_id 가져오기 (예: /경로및소요시간?user_id=N-30)
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user_id');
+
+    // 2. 완료 버튼 클릭 시 실행되는 함수
+    function completeReservation() {
+      // ID가 없으면 에러 처리
+      if (!userId) {
+        alert("오류: 사용자 정보를 찾을 수 없습니다. 처음부터 다시 시도해주세요.");
+        window.location.href = "/";
+        return;
+      }
+
+      // 서버로 보낼 데이터 준비
+      const formData = new FormData();
+      formData.append('user_id', userId);
+
+      // 서버(/예약완료)에 전송
+      fetch('/예약완료', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json()) // 서버 응답을 JSON으로 변환
+      .then(data => {
+        if (data.status === 'success') {
+          // 성공 시 알림 후 메인으로
+          alert(data.message); 
+          window.location.href = "/"; 
+        } else {
+          // 실패 시 에러 메시지
+          alert("오류: " + data.message);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert("서버와 통신 중 문제가 발생했습니다.");
+      });
+    }
+
+    // 예시 데이터 표시 (기존 코드 유지)
+    const storedTime = localStorage.getItem('selected_time') || 'nn';
+    document.getElementById('timeValue').innerText = storedTime;
+  </script>
+</body>
+</html>
