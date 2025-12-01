@@ -95,7 +95,6 @@ ROS2 기반 **농촌 자율주행 셔틀 호출 서비스**를 위한 웹 프론
 ---
 
 ## 4. 프로젝트 구조(요약)
-
 > 실제 파일명/경로는 레포지토리를 기준으로 약간 다를 수 있습니다.
 
 ```text
@@ -114,20 +113,27 @@ callbus/
 ├─ reservation.yml          # 실제 예약 데이터
 ├─ requirments.txt          # 의존성 목록 (fastapi, uvicorn, pyyaml 등)
 └─ README.md                # (이 파일)
+```
 
+## 5. 실행 방법
 
-# 1) 레포지토리 클론
+1) 레포지토리 클론
 git clone https://github.com/ping1239/callbus.git
 cd callbus
 
-# 2) 가상 환경(선택)
+2) 가상 환경(선택)
 python -m venv venv
 # Windows
 venv\Scripts\activate
 # macOS / Linux
 source venv/bin/activate
 
-# 3) 패키지 설치
+3) 패키지 설치
 pip install -r requirments.txt
 # 혹은 필요 시
 pip install fastapi uvicorn pyyaml
+
+4) 실행
+uvicorn main:app --reload
+http주소로 접속
+

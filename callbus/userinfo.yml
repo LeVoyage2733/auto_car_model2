@@ -6,16 +6,16 @@ sample:
   assist: 0
 N-30:
   name: 이서준
-  phone: 1234
-  emergency: 1234
+  phone: '123'
+  emergency: '123'
   passengers: 1
-  assist: true
-N-44:
-  name: 정혜원
-  phone: 1234
-  emergency: 1234
-  passengers: 3
   assist: false
+N-44:
+  name: empty
+  phone: empty
+  emergency: empty
+  passengers: empty
+  assist: 0
 N-40:
   name: empty
   phone: empty

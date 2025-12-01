@@ -16,15 +16,20 @@ class RidePublisher(Node):
         super().__init__('web_ride_bridge')
         self.publisher_ = self.create_publisher(RideRequest, '/ride_request', 10)
         
+        # 정류장 좌표 데이터베이스 (1~6번)
         self.stations = {
-            1: {'x': 5.12, 'y': 16.0}, 2: {'x': 36.2, 'y': 27.7},
-            3: {'x': 78.3, 'y': 14.2}, 4: {'x': 59.6, 'y': 61.9},
-            5: {'x': 45.1, 'y': 57.9}, 6: {'x': 5.5, 'y': 54.1}
+            1: {'x': 5.12, 'y': 16.0},   # 태초마을
+            2: {'x': 36.2, 'y': 27.7},   # 시장
+            3: {'x': 78.3, 'y': 14.2},   # x마을
+            4: {'x': 59.6, 'y': 61.9},   # 먼 마을
+            5: {'x': 45.1, 'y': 57.9},   # 갈림길
+            6: {'x': 5.5, 'y': 54.1}     # 크 마을
         }
 
     def dispatch_taxi(self, start_idx, end_idx, user_id="web_user"):
+        # 유효하지 않은 정류장 번호면 무시
         if start_idx not in self.stations or end_idx not in self.stations:
-            self.get_logger().error(f"❌ 잘못된 정류장: {start_idx}->{end_idx}")
+            self.get_logger().error(f"❌ 잘못된 정류장 번호: {start_idx} -> {end_idx}")
             return False
         
         msg = RideRequest()
@@ -62,7 +67,10 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- [라우터] ---
+# =========================================================
+# 웹 페이지 라우터
+# =========================================================
+
 @app.get("/")
 def index():
     path = Path(__file__).parent / "statics" / "index.html"
@@ -80,11 +88,15 @@ async def post_reservation(
 ):
     new_data = {user_id: {"name": name, "phone": phone, "emergency": emergency, "passengers": passengers, "assist": assist}}
     file_path = BASE_DIR / "userinfo.yml"
+    
     if file_path.exists():
         with file_path.open("r", encoding="utf-8") as f: existing = yaml.safe_load(f) or {}
     else: existing = {}
+
     existing.update(new_data)
-    with file_path.open("w", encoding="utf-8") as f: yaml.dump(existing, f, allow_unicode=True, sort_keys=False)
+    with file_path.open("w", encoding="utf-8") as f:
+        yaml.dump(existing, f, allow_unicode=True, sort_keys=False)
+
     return HTMLResponse(f"<script>location.href='/호출위치선택?user_id={user_id}';</script>")
 
 @app.get("/호출위치선택")
@@ -92,33 +104,77 @@ def location():
     path = Path(__file__).parent / "statics" / "reservation_2.html"
     return HTMLResponse(content=path.read_text(encoding="utf-8"), status_code=200)
 
+# --- [핵심 수정] 저장 후 -> 파일에서 읽어서 -> 호출 ---
 @app.post("/호출위치선택")
 async def post_LocationTime(
-    user_id: str = Form(...), date: str = Form(...), arrival_time: str = Form(...),
-    start_node: int = Form(...), end_node: int = Form(...)
+    user_id: str = Form(...),
+    date: str = Form(...),
+    arrival_time: str = Form(...),
+    start_node: int = Form(...),
+    end_node: int = Form(...)
 ):
-    # 1. 파일 저장
-    new_data = {user_id: {"date": date, "time": arrival_time, "start": start_node, "end": end_node}}
-    file_path = BASE_DIR / "reservation.yml"
-    if file_path.exists():
-        with file_path.open("r", encoding="utf-8") as f: existing = yaml.safe_load(f) or {}
-    else: existing = {}
-    existing.update(new_data)
-    with file_path.open("w", encoding="utf-8") as f: yaml.dump(existing, f, allow_unicode=True, sort_keys=False)
+    try:
+        # 1. [검증] 유효한 사용자인지 확인
+        user_file = BASE_DIR / "userinfo.yml"
+        users = {}
+        if user_file.exists():
+            with user_file.open("r", encoding="utf-8") as f:
+                users = yaml.safe_load(f) or {}
 
-    # 2. 파일 다시 읽어서 ROS 호출 (데이터 무결성 확인)
-    if ros_node:
-        with file_path.open("r", encoding="utf-8") as f: saved_db = yaml.safe_load(f) or {}
-        user_record = saved_db.get(user_id, {})
-        s = int(user_record.get("start"))
-        e = int(user_record.get("end"))
-        
-        ros_node.dispatch_taxi(s, e, user_id)
-        
-    # 3. WebSocket 브로드캐스트
-    await manager.broadcast(f"CALL:{user_id},{start_node},{end_node}")
+        if user_id not in users:
+             return HTMLResponse("""<script>alert("❌ 등록되지 않은 사용자입니다."); window.location.href = "/호출예약";</script>""")
 
-    return HTMLResponse("""<script>alert("✅ 예약 완료! 택시가 출발합니다."); window.location.href = "/경로및소요시간";</script>""")
+        # 2. [저장] 예약 정보 파일에 쓰기 (Write)
+        new_data = {
+            user_id: {
+                "date": date,
+                "time": arrival_time,
+                "start": start_node,  # 출발지 저장
+                "end": end_node       # 도착지 저장
+            }
+        }
+        
+        res_file = BASE_DIR / "reservation.yml"
+        existing = {}
+        if res_file.exists():
+            with res_file.open("r", encoding="utf-8") as f:
+                existing = yaml.safe_load(f) or {}
+
+        existing.update(new_data)
+        
+        with res_file.open("w", encoding="utf-8") as f:
+            yaml.dump(existing, f, allow_unicode=True, sort_keys=False)
+
+        # 3. [읽기 & 발송] 저장된 파일에서 다시 데이터를 꺼내서 ROS로 보냄 (Read & Dispatch)
+        if ros_node:
+            # 파일을 다시 엽니다 (저장 확인 겸 데이터 로드)
+            with res_file.open("r", encoding="utf-8") as f:
+                saved_db = yaml.safe_load(f) or {}
+            
+            # 해당 유저의 저장된 데이터를 가져옵니다
+            user_record = saved_db.get(user_id, {})
+            
+            # 파일에 저장된 값을 사용합니다! (입력값이 아니라 파일값 사용)
+            s_node = int(user_record.get("start"))
+            e_node = int(user_record.get("end"))
+            
+            print(f"📂 파일에서 로드된 데이터: {s_node} -> {e_node}")
+            
+            # ROS 2 호출
+            success = ros_node.dispatch_taxi(s_node, e_node, user_id)
+            if not success:
+                 raise Exception("잘못된 정류장 번호입니다.")
+        else:
+            print("⚠️ ROS 노드가 실행되지 않았습니다.")
+        
+        # 4. WebSocket 브로드캐스트 (친구 호환용)
+        await manager.broadcast(f"CALL:{user_id},{start_node},{end_node}")
+
+        return HTMLResponse("""<script>alert("✅ 예약 완료! 파일 저장 후 차량이 출발합니다."); window.location.href = "/경로및소요시간";</script>""")
+
+    except Exception as e:
+        print(f"❌ 서버 에러 발생: {e}")
+        return HTMLResponse(f"""<script>alert("오류 발생: {e}"); window.history.back();</script>""")
 
 @app.get("/경로및소요시간")
 def time():

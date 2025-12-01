@@ -212,15 +212,7 @@
           enctype='application/x-www-form-urlencoded'>
   <div class="container">                    
     <h1>위치 및 시간 설정</h1>
-    <!-- 출발점과 도착점 지정
-    1번 정류장(두 집 영영) : (3.32, 10.3)
-    2번 정류장(시장) : (22.8, 16.5)
-    3번 정류장(삼거리맞은편) : (49.1, 9.11)
-    4번 정류장(가장멂 ㅡㅡ) : (37.4, 38.6)
-    삼거리 노드 : (28.2, 36.0)
-    5번 정류장(고ㅋ) : (3.44, 33.7) -->
     
-    <!---->
     <!-- html 추가한 부분 시작 -->
     <div class="map-box">
       <div class="map-header">
@@ -231,20 +223,20 @@
       <div class="map-columns">
         <!-- 출발지 리스트 -->
          <div class="map-column">
-          <button type="button" class="start-btn" name="start1" id="start1" data-value="1">정류장1</button>
-          <button type="button" class="start-btn" name="start2" id="start2" data-value="2">정류장2</button>
-          <button type="button" class="start-btn" name="start3" id="start3" data-value="3">정류장3</button>
-          <button type="button" class="start-btn" name="start4" id="start4" data-value="4">정류장4</button>
-          <button type="button" class="start-btn" name="start5" id="start5" data-value="5">정류장5</button>
+          <button type="button" class="start-btn" name="start1" id="start1" data-value="a">정류장1</button>
+          <button type="button" class="start-btn" name="start2" id="start2" data-value="b">정류장2</button>
+          <button type="button" class="start-btn" name="start3" id="start3" data-value="c">정류장3</button>
+          <button type="button" class="start-btn" name="start4" id="start4" data-value="d">정류장4</button>
+          <button type="button" class="start-btn" name="start5" id="start5" data-value="e">정류장5</button>
         </div>
         
         <!-- 도착지 리스트 -->
          <div class="map-column">
-          <button type="button" class="end-btn" name="arrival1" id="arrival1" data-value="1">정류장1</button>
-          <button type="button" class="end-btn" name="arrival2" id="arrival2" data-value="2">정류장2</button>
-          <button type="button" class="end-btn" name="arrival3" id="arrival3" data-value="3">정류장3</button>
-          <button type="button" class="end-btn" name="arrival4" id="arrival4" data-value="4">정류장4</button>
-          <button type="button" class="end-btn" name="arrival5" id="arrival5" data-value="5">정류장5</button>
+          <button type="button" class="end-btn" name="arrival1" id="arrival1" data-value="a">정류장1</button>
+          <button type="button" class="end-btn" name="arrival2" id="arrival2" data-value="b">정류장2</button>
+          <button type="button" class="end-btn" name="arrival3" id="arrival3" data-value="c">정류장3</button>
+          <button type="button" class="end-btn" name="arrival4" id="arrival4" data-value="d">정류장4</button>
+          <button type="button" class="end-btn" name="arrival5" id="arrival5" data-value="e">정류장5</button>
         </div>
       </div>
     </div>
@@ -306,8 +298,6 @@
       document.getElementById("user_id").value = userId;
     }
 
-
-    //
     // JS 추가한 부분 시작
     // 출발지 / 도착지 선택 버튼 처리
     const startButtons = document.querySelectorAll(".start-btn");
@@ -393,10 +383,6 @@
     });
   });
 });
-// JS 추가한 부분 끝
-//
-
-
     // 한국 시간 기준으로 날짜 보정
     const today = new Date();
     today.setHours(today.getHours() + 9); // UTC → KST 변환
@@ -476,18 +462,12 @@
         const hh = String(arrival.getHours()).padStart(2, "0");
         const mm = String(arrival.getMinutes()).padStart(2, "0");
 
-        arrivalHidden.value = `${hh}:${mm}`; // 예: "14:35"
+        arrivalHidden.value = `${hh}:${mm}`;
       } else {
-        // 오늘이 아닌 날짜: 타임피커에서 고른 시간 그대로
-        arrivalHidden.value = dialTime; // 예: "09:20"
+        arrivalHidden.value = dialTime; // 오늘이 아닌 날짜: 타임피커에서 고른 시간 그대로
       }
-
-      // 여기까지 왔으면 검증 통과 + hidden 값 세팅 완료 → 폼 전송 허용
-      // (return true 하면 기본 submit 동작 실행됨)
+      
       return true;
-
-      // 호출 예약_page3로 이동
-      // window.location.href = "/경로및소요시간";
     }
   </script>
   </form>
