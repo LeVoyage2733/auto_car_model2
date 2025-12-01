@@ -23,11 +23,11 @@ N-40:
   passengers: empty
   assist: 0
 N-37-8:
-  name: empty
-  phone: empty
-  emergency: empty
-  passengers: empty
-  assist: 0
+  name: 손주희
+  phone: 0987
+  emergency: '1234'
+  passengers: 1
+  assist: false
 N-35-3:
   name: empty
   phone: empty

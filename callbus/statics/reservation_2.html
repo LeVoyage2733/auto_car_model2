@@ -1,475 +1,336 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>호출 예약_page2</title>
+from fastapi import FastAPI, HTTPException, Form, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
+import yaml
+from typing import List
 
-  <!-- CSS: 고령자 친화적 인터페이스 구현 -->
-  <style>
-    body {
-      font-family: 'Noto Sans KR', sans-serif;
-      background-color: #fff;
-      margin: 0;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
 
-    .container {
-      width: 100%;
-      max-width: 540px;
-    }
 
-    h1 {
-      text-align: center;
-      font-size: 3rem;
-      margin-bottom: 40px;
-      color: #333;
-    }
+app = FastAPI()
 
-    .map-box {
-      width: 100%;
-      background-color: #f0f0f0;
-      border: 2px solid #ffc107;
-      border-radius: 15px;
-      box-sizing: border-box;
-      padding: 20px;
-      margin-bottom: 30px;
-    
-    }
+# --- 연결 관리자 (ROS 차량 관리) ---
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
 
-    .map-header {
-      width: 100%;
-      display: flex;
-      justify-content: space-between;
-      font-size: 1.4rem;
-      font-weight: bold;
-      color: #333;
-    }
-    
-    .map-header span {
-      flex: 1;
-      text-align: center;
-    }
-    
-    .map-columns {
-      width: 100%;
-      display: flex;
-      gap: 12px;
-    }
-    
-    .map-column {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
 
-    .map-column button {
-      padding: 14px 0;
-      font-size: 1.2rem;
-      border-radius: 12px;
-      border: none;
-      cursor: pointer;
-      background-color: #e9ecef;
-      color: #333;
-      font-weight: bold;
-      transition: background-color 0.2s, transform 0.1s;
-    }
-    
-    .map-column button.selected {
-      background-color: #e0a800;
-      color: #fff;
-      transform: scale(1.02);
-    }
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
 
-    .map-button-group {
-      display: flex;
-      width: 100%;
-      gap: 12px;
-    }
+    async def broadcast(self, message: str):
+        # 연결된 모든 차량에게 메시지 전송
+        for connection in self.active_connections:
+            await connection.send_text(message)
 
-    .map-button-group button {
-      flex: 1;
-      padding: 16px 0;
-      font-size: 1.3rem;
-      border-radius: 12px;
-      border: none;
-      cursor: pointer;
-      background-color: #e9ecef;
-      color: #333;
-      font-weight: bold;
-      transition: background-color 0.2s, transform 0.1s;
-    }
+manager = ConnectionManager()
+# ----------------------------------
 
-    .map-button-group button.active {
-      background-color: #e0a800;
-      color: #fff;
-      transform: scale(1.02);
-    }
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    .info-section {
-      margin-bottom: 30px;
-    }
+BASE_DIR = Path(__file__).parent
 
-    .info-title {
-      font-size: 1.6rem;
-      font-weight: bold;
-      color: #333;
-      margin-bottom: 8px;
-    }
+# --- 1. 기본 페이지 ---
+@app.get("/")
+def index():
+    path = BASE_DIR / "statics" / "index.html"
+    if not path.exists(): return HTMLResponse("index.html 없음", 404)
+    return HTMLResponse(content=path.read_text(encoding="utf-8"), status_code=200)
 
-    .info-box {
-      width: 100%;
-      background-color: #e9ecef;
-      border-radius: 10px;
-      padding: 18px;
-      text-align: center;
-      font-size: 1.3rem;
-      color: #555;
-      box-sizing: border-box;
-    }
+# --- 2. 호출 예약 (사용자 정보 입력) ---
+@app.get("/호출예약")
+def reservation():
+    path = BASE_DIR / "statics" / "reservation_1.html"
+    return HTMLResponse(content=path.read_text(encoding="utf-8"), status_code=200)
 
-    .input-group {
-      margin-bottom: 30px;
-    }
+@app.post("/호출예약")
+async def post_reservation(
+    name: str = Form(...),
+    phone: str = Form(...),
+    user_id: str = Form(...),
+    emergency: str  = Form(""),
+    passengers: int = Form(...),
+    assist: bool = Form(False)
+):
+    # print(name, phone, user_id, emergency) # 테스트용
 
-    label {
-      font-size: 2rem;
-      font-weight: bold;
-      display: block;
-      margin-bottom: 8px;
-      color: #333;
-    }
 
-    input[type="date"], input[type="time"] {
-      width: 100%;
-      padding: 12px;
-      font-weight: bold;
-      font-size: 1.1rem;
-      border: 2px solid #ccc;
-      border-radius: 8px;
-      box-sizing: border-box;
-      margin-bottom: 20px;
-    }
-
-    .time-select-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-    }
-
-    .time-select-group button {
-      flex: 1 1 calc(50% - 10px);
-      padding: 20px;
-      font-size: 1.3rem;
-      background-color: #e9ecef;
-      border: none;
-      border-radius: 8px;
-      color: #333;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-
-    .time-select-group button.active {
-      background-color: #e0a800;
-      color: #fff;
-      font-weight: bold;
-    }
-
-    .btn-next {
-      width: 100%;
-      background-color: #ffc107;
-      color: #000;
-      font-weight: bold;
-      font-size: 2rem;
-      border: none;
-      border-radius: 12px;
-      padding: 15px;
-      margin-top: 25px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-
-    .btn-next:hover {
-      background-color: #e0a800;
-    }
-
-    /* 처음에는 숨김처리 */
-    #timeSection {
-      display: none;
-      transition: all 0.3s ease;
-    }
-  </style>
-</head>
-
-<body>
-  <form   id="timeForm"
-          method='post' 
-          action='/호출위치선택'
-          enctype='application/x-www-form-urlencoded'>
-  <div class="container">                    
-    <h1>위치 및 시간 설정</h1>
-    
-    <!-- html 추가한 부분 시작 -->
-    <div class="map-box">
-      <div class="map-header">
-        <span>출발지 선택 </span>
-        <span>도착지 선택</span>
-      </div>
-      
-      <div class="map-columns">
-        <!-- 출발지 리스트 -->
-         <div class="map-column">
-          <button type="button" class="start-btn" name="start1" id="start1" data-value="a">정류장1</button>
-          <button type="button" class="start-btn" name="start2" id="start2" data-value="b">정류장2</button>
-          <button type="button" class="start-btn" name="start3" id="start3" data-value="c">정류장3</button>
-          <button type="button" class="start-btn" name="start4" id="start4" data-value="d">정류장4</button>
-          <button type="button" class="start-btn" name="start5" id="start5" data-value="e">정류장5</button>
-        </div>
-        
-        <!-- 도착지 리스트 -->
-         <div class="map-column">
-          <button type="button" class="end-btn" name="arrival1" id="arrival1" data-value="a">정류장1</button>
-          <button type="button" class="end-btn" name="arrival2" id="arrival2" data-value="b">정류장2</button>
-          <button type="button" class="end-btn" name="arrival3" id="arrival3" data-value="c">정류장3</button>
-          <button type="button" class="end-btn" name="arrival4" id="arrival4" data-value="d">정류장4</button>
-          <button type="button" class="end-btn" name="arrival5" id="arrival5" data-value="e">정류장5</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- 선택된 출발지/도착지 서버로 보내기 위한 hidden -->
-     <input type="hidden" name="start" id="start">
-     <input type="hidden" name="end" id="end">
-     <!-- html 추가한 부분 끝 -->
-
-    <!-- 가장 최근 이용 내역 표시란 -->
-    <div class="info-section">
-      <div class="info-title">가장 최근 이용 내역</div>
-      <div class="info-box" id="recentBox">가장 최근 이용 내역이 없습니다.</div> <!-- 아직 서버와 연결 전이라, 없다고 표시만 해놓은 상태 -->
-    </div>
-
-    <!-- 즐겨찾기한 이동 경로 표시란 -->
-    <div class="info-section">
-      <div class="info-title">즐겨찾기 이동 경로</div>
-      <div class="info-box" id="favoriteBox">즐겨찾기한 이동 경로가 없습니다.</div> <!-- 아직 서버와 연결 전이라, 없다고 표시만 해놓은 상태 -->
-    </div>
-
-    <!-- 날짜 선택 -->
-    <div class="input-group">
-      <label for="date">날짜 선택</label>
-      <input type="date" name="date" id="date">
-    </div>
-
-    <!-- 차량 호출 시간 (날짜 선택 후 나타남) -->
-    <div id="timeSection" class="input-group">
-      <label id="timeLabel" for="time-option">차량 도착 시간 선택</label>
-
-      <!-- 예약자가 선택한 날짜가 오늘 날짜일 경우 버튼 표시 -->
-      <div id="buttonGroup" class="time-select-group">
-        <button type="button" data-time="5">5분 뒤</button>
-        <button type="button" data-time="10">10분 뒤</button>
-        <button type="button" data-time="30">30분 뒤</button>
-        <button type="button" data-time="60">1시간 뒤</button>
-      </div>
-
-      <!-- 예약자가 선택한 날짜가 오늘 날짜가 아닐 경우 타임피커 표시 -->
-      <input type="time" id="timePicker" style="display:none;">
-      <input type="hidden" name="user_id" id="user_id">
-      <input type="hidden" id="selected_time_minutes" value="">
-      <!-- 서버로 보낼 최종 도착시간 -->
-      <input type="hidden" name="arrival_time" id="arrival_time">
-    </div>
-
-    <!-- 다음 버튼 -->
-    <button type="submit" class="btn-next" onclick="return goNext()">다음</button>
-  </div>
-
-  <!-- JS -->
-  <script>
-    // user_id
-    const params  = new URLSearchParams(window.location.search);
-    const userId  = params.get("user_id");
-
-    if (userId) {
-      document.getElementById("user_id").value = userId;
-    }
-
-    // JS 추가한 부분 시작
-    // 출발지 / 도착지 선택 버튼 처리
-    const startButtons = document.querySelectorAll(".start-btn");
-    const endButtons = document.querySelectorAll(".end-btn");
-    const startInput = document.getElementById("start");
-    const endInput = document.getElementById("end");
-
-    let selectedStart = null;
-    let selectedEnd = null;
-
-    startButtons.forEach(btn => {
-      btn.addEventListener("click", () => {
-
-        // 이미 선택된 출발지 재클릭 → 선택 해제
-        if (selectedStart === btn.dataset.value) {
-          btn.classList.remove("selected"); 
-          selectedStart = null;
-          startInput.value = "";
-          
-          endButton.forEach(e => {
-            e.disabled = flase;
-            e.classList.remove("disabled");
-          });
-          return;
+    new_data = {
+        user_id: {
+            "name": name,
+            "phone": phone,
+            "emergency": emergency,
+            "passengers": passengers, 
+            "assist": assist
         }
-        
-        // 출발지 선택
-        selectedStart = btn.dataset.value;
-
-        startButtons.forEach(b => b.classList.remove("selected"));
-        btn.classList.add("selected");
-        startInput.value = btn.dataset.value; // 서버로 보낼 출발지 값
-        
-        // 도착지에서 동일한 정류장 선택 비활성화
-        endButtons.forEach(e => {
-          if (e.dataset.value === btn.dataset.value) {
-            e.disabled = true;
-            e.classList.add("disabled");
-          } else {
-            if (selectedEnd !== e.dataset.value) {
-              e.disabled = false;
-              e.classList.remove("disabled"); 
-            } 
-          }
-        });
-      });
-    });
-
-    endButtons.forEach(btn => {
-      btn.addEventListener("click", () => {
-
-        // 이미 선택된 도착지 재클릭 → 선택 해제
-        if (selectedEnd === btn.dataset.value) {
-          btn.classList.remove("selected");
-          selectedEnd = null;
-          endInput.value = "";
-          
-          startButtons.forEach(s => {
-            s.disabled = false;
-            s.classList.remove("disabled");
-          });
-          return;
-        }
-
-    // 도착지 선택
-    selectedEnd = btn.dataset.value;
-
-    endButtons.forEach(b => b.classList.remove("selected"));
-    btn.classList.add("selected");
-    endInput.value = btn.dataset.value; // 서버로 보낼 도착지 값
-        
-    // 출발지에서 동일한 정류장 선택 비활성화
-    startButtons.forEach(s => {
-      if (s.dataset.value === btn.dataset.value) {
-        s.disabled = true;
-        s.classList.add("disabled");
-      } else {
-        if (selectedStart !== s.dataset.value) {
-          s.disabled = false;
-          s.classList.remove("disabled");
-        }
-      }
-    });
-  });
-});
-    // 한국 시간 기준으로 날짜 보정
-    const today = new Date();
-    today.setHours(today.getHours() + 9); // UTC → KST 변환
-    const todayString = today.toISOString().split("T")[0];
-
-    const maxDate = new Date(today);
-    maxDate.setMonth(today.getMonth() + 1); // 예약 가능 날짜의 범위 설정 (1개월 이내)
-
-    const dateInput = document.getElementById("date");
-    dateInput.min = todayString;
-    dateInput.max = maxDate.toISOString().split("T")[0];
-
-    const timeSection = document.getElementById("timeSection");
-    const buttonGroup = document.getElementById("buttonGroup");
-    const timePicker = document.getElementById("timePicker");
-
-    const finalTimeInput = document.getElementById("finalTime");
-    
-    // 날짜 선택 시
-    dateInput.addEventListener("change", () => {
-      const selectedDate = new Date(dateInput.value);
-      const todayDate = new Date(todayString);
-
-      // 오늘 날짜와 같으면 버튼 표시, 다르면 타임피커 표시
-      if (selectedDate.getTime() === todayDate.getTime()) {
-        timeSection.style.display = "block";
-        buttonGroup.style.display = "flex";
-        timePicker.style.display = "none";
-      } else {
-        timeSection.style.display = "block";
-        buttonGroup.style.display = "none";
-        timePicker.style.display = "block";
-      }
-    });
-
-    // 버튼 클릭 시 스타일 변경
-    const timeButtons = document.querySelectorAll(".time-select-group button");
-    timeButtons.forEach(btn => {
-      btn.addEventListener("click", () => {
-        timeButtons.forEach(b => b.classList.remove("active")); // 이전 선택 해제
-        btn.classList.add("active"); // 현재 선택 추가 및 강조
-        document.getElementById("selected_time_minutes").value = btn.dataset.time; // 선택된 시간 저장
-      });
-    });
-
-    function goNext() {
-      const date = document.getElementById("date").value;
-      const timeButtonsVisible = buttonGroup.style.display === "flex";
-      const selectedTime = document.getElementById("selected_time_minutes").value;
-      const dialTime = timePicker.value;
-
-      // 필수 입력 항목 확인 및 안내
-      if (!date) {
-        alert("날짜를 선택해주세요.");
-        return false;
-      }
-
-      if (timeButtonsVisible && !selectedTime) {
-        alert("차량 도착 시간을 선택해주세요.");
-        return false;
-      }
-
-      if (!timeButtonsVisible && !dialTime) {
-        alert("차량 도착 시간을 입력해주세요.");
-        return false;
-      }
-      
-      const arrivalHidden = document.getElementById("arrival_time");
-
-      if (timeButtonsVisible) {
-        // 오늘 날짜 + 버튼 선택: 현재 시각 기준 n분 뒤 계산
-        const minutes = parseInt(selectedTime, 10);
-
-        const now = new Date(); // 클라이언트 현재 시각
-        const arrival = new Date(now.getTime() + minutes * 60000);
-
-        const hh = String(arrival.getHours()).padStart(2, "0");
-        const mm = String(arrival.getMinutes()).padStart(2, "0");
-
-        arrivalHidden.value = `${hh}:${mm}`;
-      } else {
-        arrivalHidden.value = dialTime; // 오늘이 아닌 날짜: 타임피커에서 고른 시간 그대로
-      }
-      
-      return true;
     }
-  </script>
-  </form>
-</body>
-</html>
+
+    file_path = BASE_DIR / "userinfo.yml"
+
+    if file_path.exists():
+        with file_path.open("r", encoding="utf-8") as f:
+            existing = yaml.safe_load(f) or {}
+    else:
+        existing = {}
+
+    if user_id not in existing:
+        return HTMLResponse("""
+            <script>
+              alert("등록되지 않은 ID입니다");  
+              location.href="/호출예약";
+            </script>
+        """)
+
+    # 안전하게 현재 등록된 값 꺼내기
+    name_value = existing.get(user_id, {}).get("name")
+    phone_value = existing.get(user_id, {}).get("phone")
+    # pass_value = existing.get(user_id, {}).get("passengers")
+    # assist_value = existing.get(user_id, {}).get("assist")
+
+    # print(name_value, phone_value, pass_value, assist_value) # 테스트 용
+
+    if (user_id in existing) & (name_value == 'empty' and phone_value == 'empty'):
+        existing.update(new_data)
+        with file_path.open("w", encoding="utf-8") as f:
+            yaml.dump(existing, f, allow_unicode=True, sort_keys=False)
+        return HTMLResponse(f"""
+            <script>
+              alert("정보 업데이트 성공!");
+              location.href="/호출예약";   
+              window.location.href = '/호출위치선택?user_id={user_id}';  
+            </script>
+        """)
+
+    elif (user_id in existing) & (name_value == name and phone_value == phone):
+        existing.update(new_data)
+        with file_path.open("w", encoding="utf-8") as f:
+            yaml.dump(existing, f, allow_unicode=True, sort_keys=False)
+        return HTMLResponse(f"""
+            <script>
+              alert("본인인증 완료!");
+              location.href="/호출예약"; 
+              window.location.href = "/호출위치선택?user_id={user_id}";
+            </script>
+        """)
+
+    return HTMLResponse("""
+        <script>
+          alert("예약자 정보가 일치하지 않습니다");
+          location.href="/호출예약";
+        </script>
+    """)
+
+# --- 3. 호출 위치 선택 (여기서는 저장만) ---
+@app.get("/호출위치선택")
+def location():
+    path = BASE_DIR / "statics" / "reservation_2.html"
+    return HTMLResponse(content=path.read_text(encoding="utf-8"), status_code=200)
+
+@app.post("/호출위치선택")
+async def post_LocationTime(
+    user_id: str = Form(...), 
+    start: str = Form(...),   # 출발지
+    end: str = Form(...),     # 목적지
+    date: str = Form(...), 
+    arrival_time: str = Form(...)
+):
+    print(f"--> [페이지2] 예약 정보 저장: {user_id} | {start} -> {end}")
+
+    # 1. 파일 저장
+    new_data = {
+        user_id: {
+            "start": start,
+            "end": end,
+            "date": date, 
+            "time": arrival_time
+        }
+    }
+    file_path = BASE_DIR / "reservation.yml"
+    
+    if file_path.exists():
+        with file_path.open("r", encoding="utf-8") as f: existing = yaml.safe_load(f) or {}
+    else: existing = {}
+    
+    existing.update(new_data)
+    with file_path.open("w", encoding="utf-8") as f: yaml.dump(existing, f, allow_unicode=True, sort_keys=False)
+
+    # ROS 전송 없이, user_id를 달고 페이지 3으로 이동
+    return HTMLResponse(f"""
+        <script>
+          alert("저장되었습니다!");
+          window.location.href = "/경로및소요시간?user_id={user_id}";
+        </script>
+    """)
+
+
+# --- 4. 경로 및 소요시간 (완료 버튼 누르면 전송) ---
+@app.get("/경로및소요시간")
+def time():
+    path = BASE_DIR / "statics" / "reservation_3.html"
+    return HTMLResponse(content=path.read_text(encoding="utf-8"), status_code=200)
+
+# 완료 버튼 처리
+@app.post("/예약완료")
+async def complete_reservation(user_id: str = Form(...)):
+    print(f"전송 요청 ID: {user_id}")
+    
+    # 1. 파일에서 저장된 정보(start, end) 꺼내기
+    file_path = BASE_DIR / "reservation.yml"
+    if not file_path.exists():
+        return JSONResponse({"status": "error", "message": "예약 정보 파일이 없습니다."})
+
+    with file_path.open("r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    
+    user_data = data.get(user_id)
+    if not user_data:
+        return JSONResponse({"status": "error", "message": "해당 ID의 예약 정보가 없습니다."})
+
+    start_val = user_data.get("start")
+    end_val = user_data.get("end")
+
+    # 2. ROS(차량)에게 데이터 쏘기
+    msg_to_ros = f"CALL:{user_id},{start_val},{end_val}"
+    await manager.broadcast(msg_to_ros)
+    
+    print(f"--> [서버 -> ROS] 전송 완료: {msg_to_ros}")
+
+    return JSONResponse({"status": "success", "message": "차량 호출이 완료되었습니다!"})
+
+
+# --- 5. 예약 확인 ---
+@app.get("/예약확인")
+def check():
+    path = Path(__file__).parent / "statics" / "check_number.html" 
+    html_content = path.read_text(encoding = "utf-8")
+    return HTMLResponse(content = html_content, status_code = 200)
+@app.post("/예약확인")
+async def post_reservation(
+    checkcode: str = Form(...)
+):
+    file_path = BASE_DIR / "reservation.yml"
+    
+
+    if file_path.exists():
+        with file_path.open("r", encoding="utf-8") as f:
+            existing = yaml.safe_load(f) or {}
+    else:
+        existing = {}
+
+    start_value = existing.get(checkcode, {}).get("start")
+
+    if (checkcode in existing) and start_value != 'empty':
+        return HTMLResponse(f"""
+            <script>
+            alert("식별번호가 확인되었습니다!");
+            window.location.href = "/예약정보확인?code={checkcode}";
+            </script>
+        """)
+    return HTMLResponse("""
+            <script>
+            alert("옳바르지 않은 식별번호입니다. \\n식별번호를 다시 확인해주세요.");
+            window.location.href= "/예약확인";
+            </script>
+        """)
+
+@app.get("/예약정보확인")
+def check():
+    path = Path(__file__).parent / "statics" / "check_reservation.html" 
+    html_content = path.read_text(encoding = "utf-8")
+    return HTMLResponse(content = html_content, status_code = 200)
+@app.post("/api/reservation/cancel")
+def cancel_reservation(code: str = Query(...)):
+    """
+    /api/reservation/cancel?code=식별번호
+    로 들어온 예약을 'empty' 값으로 초기화
+    - userinfo.yml
+    - reservation.yml
+    """
+    # reservation.yml 초기화
+    reservation_path = BASE_DIR / "reservation.yml"
+    if reservation_path.exists():
+        with reservation_path.open("r", encoding="utf-8") as f:
+            reservation = yaml.safe_load(f) or {}
+    else:
+        reservation = {}
+
+    reservation[code] = {
+        "start": "empty",
+        "end": "empty",
+        "date": "empty",
+        "time": "empty",
+    }
+
+    with reservation_path.open("w", encoding="utf-8") as f:
+        yaml.dump(reservation, f, allow_unicode=True, sort_keys=False)
+
+    return JSONResponse(
+        {"status": "success", "message": "예약이 정상적으로 취소되었습니다."}
+    )
+
+
+# 예약정보 조회
+@app.get("/api/reservation")
+def get_reservation(code: str = Query(...)):
+    """
+    식별번호(code = user_id)로 예약 상세 정보 조회
+    - 사용자 기본 정보: userinfo.yml
+    - 위치/시간 정보: reservation.yml
+    를 합쳐서 JSON으로 반환
+    """
+
+    userinfo_path = BASE_DIR / "userinfo.yml"
+    reservation_path = BASE_DIR / "reservation.yml"
+
+    # 파일 존재 여부 체크
+    if not userinfo_path.exists() or not reservation_path.exists():
+        raise HTTPException(status_code=404, detail="예약 정보를 찾을 수 없습니다.")
+
+    with userinfo_path.open("r", encoding="utf-8") as f:
+        userinfo = yaml.safe_load(f) or {}
+
+    with reservation_path.open("r", encoding="utf-8") as f:
+        reservations = yaml.safe_load(f) or {}
+
+    basic = userinfo.get(code)
+    detail = reservations.get(code)
+
+    if not basic or not detail:
+        raise HTTPException(status_code=404, detail="해당 식별번호의 예약 정보가 없습니다.")
+
+    # 프론트에서 쓸 수 있게 합쳐서 반환
+    result = {
+        "name": basic.get("name"),
+        "phone": basic.get("phone"),
+        "emergency": basic.get("emergency"),
+        "passengers": basic.get("passengers"),
+        "assist": basic.get("assist"),
+        "start": detail.get("start"),
+        "end": detail.get("end"),
+        "date": detail.get("date"),
+        "time": detail.get("time"),
+    }
+
+    return JSONResponse(content=result)
+
+# --- WebSocket (ROS 연결용) ---
+@app.websocket("/ws/vehicle/{vehicle_id}")
+async def vehicle_socket(websocket: WebSocket, vehicle_id: str):
+    await manager.connect(websocket)
+    print(f"✅ [SYSTEM] 차량 연결됨: {vehicle_id}")
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print(f"📩 [차량 -> 서버] {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print(f"⚠️ [SYSTEM] 차량 연결 끊김: {vehicle_id}")
